@@ -12,6 +12,7 @@ from app.routers import (
     profitability,
     upload,
     ai,
+    seed,
 )
 
 app = FastAPI(
@@ -44,3 +45,4 @@ app.include_router(invoices.router, prefix="/api/invoices", tags=["invoices"])
 app.include_router(profitability.router, prefix="/api/profitability", tags=["profitability"])
 app.include_router(upload.router, prefix="/api/upload", tags=["upload"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(seed.router, prefix="/api/seed", tags=["seed"])
