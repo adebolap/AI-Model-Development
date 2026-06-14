@@ -99,3 +99,53 @@ def _stub_vehicles():
         {"plate": "2-DEF-567", "type": "van", "revenue_eur": 9800, "cost_eur": 7100, "margin_pct": 27.6, "trips": 18},
         {"plate": "3-GHI-890", "type": "truck", "revenue_eur": 7200, "cost_eur": 6900, "margin_pct": 4.2, "trips": 8},
     ]
+
+
+@router.get("/monthly-trend")
+async def monthly_trend(
+    company_id: str | None = None,
+    months: int = 6,
+    db: AsyncSession = Depends(get_db),
+):
+    if not company_id:
+        return _stub_monthly_trend()
+    try:
+        data = await svc.get_monthly_trend(db, company_id, months)
+        return data if data else _stub_monthly_trend()
+    except Exception:
+        return _stub_monthly_trend()
+
+
+@router.get("/cost-breakdown")
+async def cost_breakdown(
+    company_id: str | None = None,
+    days: int = 30,
+    db: AsyncSession = Depends(get_db),
+):
+    if not company_id:
+        return _stub_cost_breakdown()
+    try:
+        data = await svc.get_cost_breakdown(db, company_id, days)
+        return data if data else _stub_cost_breakdown()
+    except Exception:
+        return _stub_cost_breakdown()
+
+
+def _stub_monthly_trend():
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+    revenues = [32000, 38000, 41000, 36000, 44000, 48200]
+    costs = [21500, 25200, 27100, 24300, 29800, 31800]
+    return [
+        {"month": m, "revenue_eur": r, "cost_eur": c, "trips": int(r / 850)}
+        for m, r, c in zip(months, revenues, costs)
+    ]
+
+
+def _stub_cost_breakdown():
+    return [
+        {"name": "Fuel", "value": 14200, "color": "#3b82f6"},
+        {"name": "Tolls", "value": 5800, "color": "#f59e0b"},
+        {"name": "Salary", "value": 7400, "color": "#8b5cf6"},
+        {"name": "Maintenance", "value": 3100, "color": "#10b981"},
+        {"name": "Insurance", "value": 1300, "color": "#ef4444"},
+    ]

@@ -132,7 +132,36 @@ async def seed_demo(db: AsyncSession) -> dict:
                 {"id": str(uuid.uuid4()), "cid": company_id, "tid": trip_id,
                  "amt": round(toll_cost, 2), "date": trip_date},
             )
+
+            driver_hours = (arrival - departure).seconds / 3600
+            salary_cost = driver_hours * random.uniform(18, 24)
+            await db.execute(
+                text("""INSERT INTO operating_costs
+                        (id, company_id, trip_id, driver_id, category, description, amount_eur, date)
+                        VALUES (:id, :cid, :tid, :did, 'salary', 'Driver hours', :amt, :date)"""),
+                {"id": str(uuid.uuid4()), "cid": company_id, "tid": trip_id,
+                 "did": driver_id, "amt": round(salary_cost, 2), "date": trip_date},
+            )
+
+            if random.random() < 0.08:
+                maint_cost = random.uniform(80, 400)
+                await db.execute(
+                    text("""INSERT INTO operating_costs
+                            (id, company_id, vehicle_id, category, description, amount_eur, date)
+                            VALUES (:id, :cid, :vid, 'maintenance', 'Service/repair', :amt, :date)"""),
+                    {"id": str(uuid.uuid4()), "cid": company_id, "vid": vehicle_id,
+                     "amt": round(maint_cost, 2), "date": trip_date},
+                )
             trip_count += 1
+
+    for vehicle_id in vehicle_ids:
+        await db.execute(
+            text("""INSERT INTO operating_costs
+                    (id, company_id, vehicle_id, category, description, amount_eur, date)
+                    VALUES (:id, :cid, :vid, 'insurance', 'Monthly insurance', :amt, :date)"""),
+            {"id": str(uuid.uuid4()), "cid": company_id, "vid": vehicle_id,
+             "amt": round(random.uniform(280, 420), 2), "date": date.today().replace(day=1)},
+        )
 
     await db.commit()
     return {"status": "seeded", "company_id": company_id, "trips_created": trip_count}

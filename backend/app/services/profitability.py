@@ -195,6 +195,87 @@ async def get_by_vehicle(db: AsyncSession, company_id: str, days: int = 30) -> l
     return out
 
 
+async def get_monthly_trend(db: AsyncSession, company_id: str, months: int = 6) -> list:
+    result = await db.execute(
+        text("""
+            SELECT
+                TO_CHAR(DATE_TRUNC('month', departure_at), 'Mon') AS month_label,
+                DATE_TRUNC('month', departure_at)                  AS month_date,
+                ROUND(SUM(t.revenue_eur)::numeric, 0)              AS revenue_eur,
+                ROUND(
+                    SUM(COALESCE(fc.fuel_total, 0) + COALESCE(oc.op_total, 0))::numeric, 0
+                )                                                  AS cost_eur,
+                COUNT(t.id)                                        AS trips
+            FROM trips t
+            LEFT JOIN (
+                SELECT trip_id, SUM(cost_eur) AS fuel_total
+                FROM fuel_costs WHERE trip_id IS NOT NULL GROUP BY trip_id
+            ) fc ON fc.trip_id = t.id
+            LEFT JOIN (
+                SELECT trip_id, SUM(amount_eur) AS op_total
+                FROM operating_costs WHERE trip_id IS NOT NULL GROUP BY trip_id
+            ) oc ON oc.trip_id = t.id
+            WHERE t.company_id = :cid
+              AND t.deleted_at IS NULL
+              AND t.status = 'completed'
+              AND departure_at >= DATE_TRUNC('month', NOW()) - INTERVAL '1 month' * :months
+            GROUP BY month_date, month_label
+            ORDER BY month_date ASC
+        """),
+        {"cid": company_id, "months": months},
+    )
+    rows = result.mappings().all()
+    return [
+        {
+            "month": r["month_label"],
+            "revenue_eur": float(r["revenue_eur"] or 0),
+            "cost_eur": float(r["cost_eur"] or 0),
+            "trips": int(r["trips"] or 0),
+        }
+        for r in rows
+    ]
+
+
+async def get_cost_breakdown(db: AsyncSession, company_id: str, days: int = 30) -> list:
+    since = date.today() - timedelta(days=days)
+    fuel = await db.scalar(
+        text("SELECT COALESCE(SUM(cost_eur), 0) FROM fuel_costs WHERE company_id = :cid AND date >= :since"),
+        {"cid": company_id, "since": since},
+    )
+    op_result = await db.execute(
+        text("""
+            SELECT category, COALESCE(SUM(amount_eur), 0) AS total
+            FROM operating_costs
+            WHERE company_id = :cid AND date >= :since
+            GROUP BY category
+        """),
+        {"cid": company_id, "since": since},
+    )
+    op_rows = op_result.mappings().all()
+    category_map = {r["category"]: float(r["total"]) for r in op_rows}
+
+    COLOR_MAP = {
+        "fuel": "#3b82f6",
+        "toll": "#f59e0b",
+        "maintenance": "#10b981",
+        "salary": "#8b5cf6",
+        "insurance": "#ef4444",
+        "admin": "#6b7280",
+        "other": "#d1d5db",
+    }
+
+    out = [{"name": "Fuel", "value": round(float(fuel or 0), 2), "color": COLOR_MAP["fuel"]}]
+    label_map = {
+        "toll": "Tolls", "maintenance": "Maintenance", "salary": "Salary",
+        "insurance": "Insurance", "admin": "Admin", "other": "Other",
+    }
+    for cat, label in label_map.items():
+        if cat in category_map and category_map[cat] > 0:
+            out.append({"name": label, "value": round(category_map[cat], 2), "color": COLOR_MAP[cat]})
+
+    return out
+
+
 def _empty_summary() -> dict:
     return {
         "revenue_eur": 0,
